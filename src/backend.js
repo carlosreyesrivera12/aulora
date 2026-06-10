@@ -9,11 +9,23 @@ if (PLACEHOLDER) {
   if (window.auloraBackendReady) window.auloraBackendReady();
 } else {
   const sb = createClient(SUPABASE_URL, SUPABASE_ANON);
-  let saveT = null, colegioId = null;
+  let saveT = null, colegioId = null, pending = null;
+
+  function backupLocal(d) { try { localStorage.setItem('aulora_db', JSON.stringify(d)); } catch (e) {} }
+  async function doSave() {
+    if (!pending) return;
+    const data = pending;
+    const { error } = await sb.rpc('aulora_save', { new_data: data });
+    if (error) { console.error('[Aulora] save:', error); backupLocal(data); setTimeout(doSave, 4000); return; } // offline/denegado: respaldo + reintento
+    try { localStorage.removeItem('aulora_db'); } catch (e) {} // guardado en nube: no dejar datos en el navegador
+    if (pending === data) pending = null;
+  }
 
   async function getColegio() {
     if (colegioId) return colegioId;
-    const { data } = await sb.from('perfiles').select('colegio_id').limit(1).maybeSingle();
+    const { data: { user } } = await sb.auth.getUser();
+    if (!user) return null;
+    const { data } = await sb.from('perfiles').select('colegio_id').eq('id', user.id).maybeSingle();
     colegioId = data ? data.colegio_id : null;
     return colegioId;
   }
@@ -29,20 +41,17 @@ if (PLACEHOLDER) {
       sb.auth.onAuthStateChange((_e, s) => { colegioId = null; cb(s ? s.user : null); });
     },
     load: async () => {
-      const cid = await getColegio(); if (!cid) return null;
-      const { data } = await sb.from('colegio_datos').select('data').eq('colegio_id', cid).maybeSingle();
-      return data ? data.data : null;
+      const { data, error } = await sb.rpc('aulora_load');
+      if (error) { console.error('[Aulora] load:', error); return null; }
+      return data || null;
     },
     save: (db) => {
+      pending = JSON.parse(JSON.stringify(db));
       if (saveT) clearTimeout(saveT);
-      const clean = JSON.parse(JSON.stringify(db));
-      saveT = setTimeout(async () => {
-        const cid = await getColegio(); if (!cid) return;
-        const { error } = await sb.from('colegio_datos')
-          .upsert({ colegio_id: cid, data: clean, updated_at: new Date().toISOString() });
-        if (error) console.error('[Aulora] save:', error);
-      }, 700);
-    }
+      saveT = setTimeout(doSave, 700);
+    },
+    flush: () => { if (saveT) { clearTimeout(saveT); saveT = null; } return doSave(); },
+    myProfile: async () => { const { data: { user } } = await sb.auth.getUser(); if (!user) return null; const { data } = await sb.from('perfiles').select('rol,nombre').eq('id', user.id).maybeSingle(); return data || null; }
   };
   if (window.auloraBackendReady) window.auloraBackendReady();
 }

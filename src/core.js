@@ -1,7 +1,7 @@
 /* ===== AULORA v4 — Mendoza, Argentina (ARS) ===== */
 const DB_VERSION='6';
 const AV_COLORS=['#0E7C66','#E0743B','#3B5BE0','#9B3BE0','#E03B7A','#0EA5B7','#8A6D1F','#D6453F'];
-const today=new Date('2026-06-06');
+const today=new Date();
 const MONTHS=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
 
 const PERMS=[
@@ -184,7 +184,9 @@ function freshDB(){return {v:DB_VERSION,
   ]};}
 function loadLocal(){try{const s=localStorage.getItem('aulora_db');if(s){const d=JSON.parse(s);if(d.v===DB_VERSION)return d;}}catch(e){}return null;}
 function loadDB(){DB=loadLocal()||freshDB();}
-function saveDB(){if(window.AuloraBackend&&window.AuloraBackend.enabled){window.AuloraBackend.save(DB);}else{try{localStorage.setItem('aulora_db',JSON.stringify(DB));}catch(e){}}}
+function _sanStr(v){return typeof v==='string'?v.replace(/[<>]/g,''):v;}
+function _deepSan(o){if(Array.isArray(o))return o.map(_deepSan);if(o&&typeof o==='object'){const r={};for(const k in o)r[k]=_deepSan(o[k]);return r;}return _sanStr(o);}
+function saveDB(){const clean=_deepSan(DB);if(window.AuloraBackend&&window.AuloraBackend.enabled){window.AuloraBackend.save(clean);}else{try{localStorage.setItem('aulora_db',JSON.stringify(clean));}catch(e){}}}
 loadDB();
 
 let CURRENT=null,famStudent=null,view='dashboard',openStudentId=null,detailTab='info';
@@ -195,7 +197,7 @@ const $=s=>document.querySelector(s);
 const cfg=()=>DB.config;
 const fmt=n=>cfg().moneda+' '+Math.round(n).toLocaleString(cfg().locale||'es-AR');
 const initials=n=>n.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
-const esc=s=>(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const esc=s=>(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 function realEstado(p){if(p.estado==='pagado')return'pagado';if(new Date(p.fechaVenc)<today)return'vencido';return'pendiente';}
 function perm(p){return CURRENT&&CURRENT.perms&&CURRENT.perms[p];}
 function getAct(id){return DB.activities.find(a=>a.id===id);}
@@ -234,20 +236,25 @@ function doLogin(){const e=$('#loginEmail').value.trim().toLowerCase();
 function loginAs(u){CURRENT=u;famStudent=DB.students[0];inscCiclo=cfg().ciclo;$('#login').style.display='none';$('#app').style.display='block';$('#suName').textContent=u.nombre;$('#suRole').textContent=ROLE_LABEL[u.rol]||u.rol;$('#suAv').textContent=initials(u.nombre);if(!isPortalRole(u.rol))logAudit('login','Sistema','Inicio de sesión','info');buildNav();go(isPortalRole(u.rol)?'portal':'dashboard');}
 function logout(){if(window.AuloraBackend&&window.AuloraBackend.enabled){window.AuloraBackend.signOut();return;}CURRENT=null;$('#app').style.display='none';$('#login').style.display='flex';}
 /* Puente con backend Firebase (src/backend.js, módulo). Si no hay backend, modo local. */
+document.addEventListener('visibilitychange',function(){if(document.hidden&&window.AuloraBackend&&window.AuloraBackend.flush)window.AuloraBackend.flush();});
+window.addEventListener('pagehide',function(){if(window.AuloraBackend&&window.AuloraBackend.flush)window.AuloraBackend.flush();});
 window.auloraBackendReady=function(){
   if(!(window.AuloraBackend&&window.AuloraBackend.enabled))return;
   const dr=document.querySelector('.demo-roles');if(dr)dr.style.display='none';
   const pf=document.getElementById('loginPass');if(pf)pf.value='';
+  let _authed=false;
   window.AuloraBackend.onAuth(async fu=>{
     if(fu){
+      if(_authed)return; // ya cargado: ignorar refresh/refoco de pestaña (no pisar ediciones)
+      _authed=true;
       let d=null;try{d=await window.AuloraBackend.load();}catch(e){}
       if(d&&d.v===DB_VERSION)DB=d;else{DB=freshDB();window.AuloraBackend.save(DB);}
       applyBrand();
       const em=(fu.email||'').toLowerCase();
       let u=DB.users.find(x=>x.email&&x.email.toLowerCase()===em&&x.activo);
-      if(!u){u={id:'u'+Date.now(),nombre:em.split('@')[0]||'Administrador',email:fu.email,rol:'super_admin',activo:true,perms:rolePreset('super_admin')};DB.users.unshift(u);window.AuloraBackend.save(DB);}
+      if(!u){let prof=null;try{prof=await window.AuloraBackend.myProfile();}catch(e){}const rol=(prof&&prof.rol)||'admin';u={id:'u'+Date.now(),nombre:(prof&&prof.nombre)||em.split('@')[0]||'Usuario',email:fu.email,rol,activo:true,perms:rolePreset(rol)};DB.users.unshift(u);window.AuloraBackend.save(DB);}
       loginAs(u);
-    }else{CURRENT=null;const a=document.getElementById('app');const l=document.getElementById('login');if(a)a.style.display='none';if(l)l.style.display='flex';}
+    }else{_authed=false;CURRENT=null;const a=document.getElementById('app');const l=document.getElementById('login');if(a)a.style.display='none';if(l)l.style.display='flex';}
   });
 };
 
@@ -596,7 +603,7 @@ function viewComunicaciones(){if(!perm('ver_comunicaciones'))return noPerm();
 
 /* ====================== AUDITORÍA ====================== */
 function viewAuditoria(){if(!perm('ver_auditoria'))return noPerm();let logs=DB.audit.slice();if(auditFilter.tipo)logs=logs.filter(l=>l.tipo===auditFilter.tipo);if(auditFilter.q){const q=auditFilter.q.toLowerCase();logs=logs.filter(l=>(l.usuario+l.entidad+l.detalle+l.accion).toLowerCase().includes(q));}
-  return `<div class="view"><div class="toolbar"><input style="min-width:220px" placeholder="Buscar en el registro..." oninput="auditFilter.q=this.value;render()" value="${auditFilter.q}"><select onchange="auditFilter.tipo=this.value;render()"><option value="">Todas las acciones</option><option value="create" ${auditFilter.tipo==='create'?'selected':''}>Altas</option><option value="edit" ${auditFilter.tipo==='edit'?'selected':''}>Modificaciones</option><option value="delete" ${auditFilter.tipo==='delete'?'selected':''}>Bajas</option><option value="info" ${auditFilter.tipo==='info'?'selected':''}>Accesos / envíos / matrícula</option></select><div class="grow"></div><span style="color:var(--muted);font-size:13px">${logs.length} registro(s)</span>${perm('importar_pagos')?`<button class="btn btn-ghost btn-sm" onclick="exportExcel('auditoria')">${icoXls()} Exportar</button>`:''}</div>
+  return `<div class="view"><div class="toolbar"><input style="min-width:220px" placeholder="Buscar en el registro..." oninput="auditFilter.q=this.value;render()" value="${esc(auditFilter.q)}"><select onchange="auditFilter.tipo=this.value;render()"><option value="">Todas las acciones</option><option value="create" ${auditFilter.tipo==='create'?'selected':''}>Altas</option><option value="edit" ${auditFilter.tipo==='edit'?'selected':''}>Modificaciones</option><option value="delete" ${auditFilter.tipo==='delete'?'selected':''}>Bajas</option><option value="info" ${auditFilter.tipo==='info'?'selected':''}>Accesos / envíos / matrícula</option></select><div class="grow"></div><span style="color:var(--muted);font-size:13px">${logs.length} registro(s)</span>${perm('importar_pagos')?`<button class="btn btn-ghost btn-sm" onclick="exportExcel('auditoria')">${icoXls()} Exportar</button>`:''}</div>
    <div class="table-wrap"><table><thead><tr><th>Fecha y hora</th><th>Usuario</th><th>Acción</th><th>Entidad</th><th>Detalle</th></tr></thead><tbody>
    ${logs.map(l=>{const bd={create:'b-success',edit:'b-blue',delete:'b-danger',info:'b-grey'}[l.tipo]||'b-grey';const al={create:'Alta',edit:'Modificación',delete:'Baja',info:'Registro'}[l.tipo]||l.accion;return `<tr><td class="tnum"><small>${l.fecha}</small></td><td><div class="cell-name"><div class="avatar" style="background:${AV_COLORS[l.usuario.length%8]};width:30px;height:30px;font-size:11px">${initials(l.usuario)}</div><div><b style="font-size:13px">${l.usuario}</b><small>${ROLE_LABEL[l.rol]||l.rol}</small></div></div></td><td><span class="badge ${bd}">${al}</span></td><td><b style="font-size:13px">${l.entidad}</b></td><td><small>${l.detalle}</small></td></tr>`;}).join('')}
    </tbody></table></div></div>`;}
@@ -647,7 +654,7 @@ function famSubmit(){if(!famFileData){toast('Seleccioná un archivo primero.','w
 /* ====================== MODALES: CUOTAS ====================== */
 function modalPago(sid,pid){const studentOpts=DB.students.map(s=>`<option value="${s.id}" ${s.id===sid?'selected':''}>${studentName(s)} · ${s.curso}</option>`).join('');
   const defCurso=sid?courseByName(DB.students.find(x=>x.id===sid).curso):DB.courses[0];
-  let p={mes:MONTHS[today.getMonth()]+' 2026',concepto:'Cuota',importe:defCurso?defCurso.cuota:90000,estado:'pendiente',fechaVenc:'2026-'+String(today.getMonth()+1).padStart(2,'0')+'-'+String(cfg().diaVenc).padStart(2,'0'),metodo:'',comprobante:null};
+  let p={mes:MONTHS[today.getMonth()]+' '+today.getFullYear(),concepto:'Cuota',importe:defCurso?defCurso.cuota:90000,estado:'pendiente',fechaVenc:today.getFullYear()+'-'+String(today.getMonth()+1).padStart(2,'0')+'-'+String(cfg().diaVenc).padStart(2,'0'),metodo:'',comprobante:null};
   if(sid&&pid){const s=DB.students.find(x=>x.id===sid);const ex=s.pagos.find(x=>x.id===pid);if(ex)p=ex;}
   openModal(`<div class="modal-head"><h3>${pid?'Editar':'Registrar'} cuota</h3><button class="x" onclick="closeModal()">✕</button></div><div class="modal-body"><div class="form-grid">
      <div class="field full"><label>Alumno</label><select id="mp_s" ${pid?'disabled':''}>${studentOpts}</select></div>
@@ -666,8 +673,8 @@ function savePago(sid,pid){const s=DB.students.find(x=>x.id===document.getElemen
 function deletePago(sid,pid){const s=DB.students.find(x=>x.id===sid);const p=s.pagos.find(x=>x.id===pid);openModal(confirmHTML('Eliminar cuota',`¿Eliminar la cuota <b>${p.mes}</b> de <b>${studentName(s)}</b> (${fmt(p.importe)})? Queda registrado en auditoría.`,`confirmDeletePago('${sid}','${pid}')`,'Eliminar'));}
 function confirmDeletePago(sid,pid){const s=DB.students.find(x=>x.id===sid);const i=s.pagos.findIndex(x=>x.id===pid);const p=s.pagos[i];logAudit('eliminar','Cuota · '+studentName(s),`Eliminada cuota ${p.mes} · ${fmt(p.importe)}`,'delete');s.pagos.splice(i,1);saveDB();closeModal();buildNav();render();toast('Cuota eliminada.','danger');}
 
-function modalGenerarCuota(){openModal(`<div class="modal-head"><h3>Generar cuota del mes</h3><button class="x" onclick="closeModal()">✕</button></div><div class="modal-body"><p style="color:var(--ink-soft);margin-bottom:14px">Crea una cuota para <b>todos los alumnos activos</b>. El importe se calcula automáticamente: <b>cuota del curso + comedor + actividades confirmadas</b>.</p><div class="form-grid"><div class="field"><label>Mes / período</label><input id="gm_mes" value="${MONTHS[today.getMonth()]+' 2026'}"></div><div class="field"><label>Día de vencimiento</label><input id="gm_dia" type="number" value="${cfg().diaVenc}"></div></div><div class="field"><label>Suplemento comedor (${cfg().moneda})</label><input id="gm_com" type="number" value="${COMEDOR_CUOTA}"></div></div><div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="doGenerar()">Generar para ${DB.students.length} alumnos</button></div>`);}
-function doGenerar(){const mes=$('#gm_mes').value,com=+$('#gm_com').value,dia=$('#gm_dia').value;const venc='2026-'+String(today.getMonth()+1).padStart(2,'0')+'-'+String(dia).padStart(2,'0');let n=0;
+function modalGenerarCuota(){openModal(`<div class="modal-head"><h3>Generar cuota del mes</h3><button class="x" onclick="closeModal()">✕</button></div><div class="modal-body"><p style="color:var(--ink-soft);margin-bottom:14px">Crea una cuota para <b>todos los alumnos activos</b>. El importe se calcula automáticamente: <b>cuota del curso + comedor + actividades confirmadas</b>.</p><div class="form-grid"><div class="field"><label>Mes / período</label><input id="gm_mes" value="${MONTHS[today.getMonth()]+' '+today.getFullYear()}"></div><div class="field"><label>Día de vencimiento</label><input id="gm_dia" type="number" value="${cfg().diaVenc}"></div></div><div class="field"><label>Suplemento comedor (${cfg().moneda})</label><input id="gm_com" type="number" value="${COMEDOR_CUOTA}"></div></div><div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="doGenerar()">Generar para ${DB.students.length} alumnos</button></div>`);}
+function doGenerar(){const mes=$('#gm_mes').value,com=+$('#gm_com').value,dia=$('#gm_dia').value;const venc=today.getFullYear()+'-'+String(today.getMonth()+1).padStart(2,'0')+'-'+String(dia).padStart(2,'0');let n=0;
   DB.students.forEach(s=>{if(s.estadoMatricula!=='Activa')return;if(s.pagos.some(p=>p.mes===mes&&p.concepto.includes('Cuota')))return;const c=courseByName(s.curso);if(!c)return;const actConf=studentActs(s).filter(a=>a._estado==='confirmada').reduce((x,a)=>x+a.cuota,0);let imp=c.cuota+(s.comedor.inscrito?com:0)+actConf;let desc=0,notas=[];
     if(s.beca&&cfg().descBeca){desc+=cfg().descBeca;notas.push('beca '+cfg().descBeca+'%');}
     const hermano=DB.students.some(o=>o.id!==s.id&&o.tutor&&s.tutor&&o.tutor.email&&o.tutor.email===s.tutor.email&&o.estadoMatricula==='Activa');
@@ -747,7 +754,7 @@ function deleteDoc(sid,did){openModal(confirmHTML('Eliminar documento','¿Elimin
 function confirmDeleteDoc(sid,did){const s=DB.students.find(x=>x.id===sid);const i=s.documentos.findIndex(d=>d.id===did);const d=s.documentos[i];logAudit('eliminar','Documento · '+studentName(s),d.tipo+' eliminado','delete');s.documentos.splice(i,1);saveDB();closeModal();render();toast('Documento eliminado.','danger');}
 
 /* ====================== MODALES: COMUNICACIONES ====================== */
-function fillTemplate(txt,s){const pend=s?s.pagos.filter(p=>realEstado(p)!=='pagado'):[];const imp=pend.reduce((a,b)=>a+b.importe,0);const mes=pend.length?pend[pend.length-1].mes:MONTHS[today.getMonth()]+' 2026';const ins=s?getIns(s,cfg().ciclo):null;
+function fillTemplate(txt,s){const pend=s?s.pagos.filter(p=>realEstado(p)!=='pagado'):[];const imp=pend.reduce((a,b)=>a+b.importe,0);const mes=pend.length?pend[pend.length-1].mes:MONTHS[today.getMonth()]+' '+today.getFullYear();const ins=s?getIns(s,cfg().ciclo):null;
   return txt.replace(/{centro}/g,cfg().centroNombre).replace(/{tutor}/g,s?s.tutor.nombre:'familia').replace(/{nombre_alumno}/g,s?studentName(s):'').replace(/{curso}/g,s?(ins?ins.curso:s.curso):'').replace(/{importe}/g,fmt(imp)).replace(/{mes}/g,mes).replace(/{fecha}/g,today.toISOString().slice(0,10));}
 function modalSend(tid,sid){const tplOpts=DB.templates.map(t=>`<option value="${t.id}" ${t.id===tid?'selected':''}>${t.nombre} (${t.categoria})</option>`).join('');
   const destOpts=`<option value="">— Seleccioná alumno/tutor —</option><option value="__morosos__">📛 Todos los morosos (${metrics().morosos.length})</option>`+DB.students.map(s=>`<option value="${s.id}" ${s.id===sid?'selected':''}>${studentName(s)} → ${s.tutor.nombre}</option>`).join('');
