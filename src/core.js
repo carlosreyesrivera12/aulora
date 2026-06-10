@@ -251,8 +251,10 @@ window.auloraBackendReady=function(){
       if(d&&d.v===DB_VERSION)DB=d;else{DB=freshDB();window.AuloraBackend.save(DB);}
       applyBrand();
       const em=(fu.email||'').toLowerCase();
+      let prof=null;try{prof=await window.AuloraBackend.myProfile();}catch(e){}
       let u=DB.users.find(x=>x.email&&x.email.toLowerCase()===em&&x.activo);
-      if(!u){let prof=null;try{prof=await window.AuloraBackend.myProfile();}catch(e){}const rol=(prof&&prof.rol)||'admin';u={id:'u'+Date.now(),nombre:(prof&&prof.nombre)||em.split('@')[0]||'Usuario',email:fu.email,rol,activo:true,perms:rolePreset(rol)};DB.users.unshift(u);window.AuloraBackend.save(DB);}
+      if(!u){const rol=(prof&&prof.rol)||'admin';u={id:'u'+Date.now(),nombre:(prof&&prof.nombre)||em.split('@')[0]||'Usuario',email:fu.email,rol,activo:true,perms:rolePreset(rol)};DB.users.unshift(u);window.AuloraBackend.save(DB);}
+      if(prof&&prof.rol){u.rol=prof.rol;u.perms=rolePreset(prof.rol);} // el perfil del servidor es autoritativo
       loginAs(u);
     }else{_authed=false;CURRENT=null;const a=document.getElementById('app');const l=document.getElementById('login');if(a)a.style.display='none';if(l)l.style.display='flex';}
   });
