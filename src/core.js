@@ -254,7 +254,7 @@ window.auloraBackendReady=function(){
       let prof=null;try{prof=await window.AuloraBackend.myProfile();}catch(e){}
       let u=DB.users.find(x=>x.email&&x.email.toLowerCase()===em&&x.activo);
       if(!u){const rol=(prof&&prof.rol)||'admin';u={id:'u'+Date.now(),nombre:(prof&&prof.nombre)||em.split('@')[0]||'Usuario',email:fu.email,rol,activo:true,perms:rolePreset(rol)};DB.users.unshift(u);window.AuloraBackend.save(DB);}
-      if(prof&&prof.rol){u.rol=prof.rol;u.perms=rolePreset(prof.rol);} // el perfil del servidor es autoritativo
+      if(prof&&prof.rol&&prof.rol!==u.rol){u.rol=prof.rol;u.perms=rolePreset(prof.rol);} // sincronizar rol del servidor SOLO si cambió
       loginAs(u);
     }else{_authed=false;CURRENT=null;const a=document.getElementById('app');const l=document.getElementById('login');if(a)a.style.display='none';if(l)l.style.display='flex';}
   });
@@ -644,7 +644,7 @@ function viewConfig(){if(!perm('editar_config'))return noPerm();const c=cfg();
      <p style="color:var(--muted);font-size:13px;margin-bottom:12px">Restablece todos los datos de demostración (alumnos, cuotas, cursos, plantillas, auditoría).</p>
      <button class="btn btn-danger" onclick="resetDemo()">↺ Restablecer datos demo</button></div></div>
   </div></div>`;}
-function saveConfig(){const c=cfg();c.centroNombre=$('#cf_centro').value;c.nombre=$('#cf_nombre').value;c.sub=$('#cf_sub').value;c.direccion=$('#cf_dir').value;if($('#cf_prov'))c.provincia=$('#cf_prov').value;c.ciclo=$('#cf_curso').value;c.moneda=$('#cf_mon').value;if($('#cf_obj'))c.objetivoCobro=+$('#cf_obj').value;if($('#cf_dv'))c.diaVenc=+$('#cf_dv').value;if($('#cf_mora'))c.moraPctDia=+$('#cf_mora').value;if($('#cf_pri'))c.prioridadEspera=$('#cf_pri').value;if($('#cf_dh'))c.descHermanos=+$('#cf_dh').value;if($('#cf_db'))c.descBeca=+$('#cf_db').value;applyBrand();logAudit('editar','Configuración del colegio','Datos / parámetros actualizados','edit');saveDB();render();toast('Configuración guardada.','success');}
+function saveConfig(){const c=cfg();c.centroNombre=$('#cf_centro').value;c.nombre=$('#cf_nombre').value;c.sub=$('#cf_sub').value;c.direccion=$('#cf_dir').value;if($('#cf_prov'))c.provincia=$('#cf_prov').value;c.ciclo=$('#cf_curso').value;c.moneda=$('#cf_mon').value;if($('#cf_pais'))c.pais=$('#cf_pais').value;if($('#cf_obj'))c.objetivoCobro=+$('#cf_obj').value;if($('#cf_dv'))c.diaVenc=+$('#cf_dv').value;if($('#cf_mora'))c.moraPctDia=+$('#cf_mora').value;if($('#cf_pri'))c.prioridadEspera=$('#cf_pri').value;if($('#cf_dh'))c.descHermanos=+$('#cf_dh').value;if($('#cf_db'))c.descBeca=+$('#cf_db').value;applyBrand();logAudit('editar','Configuración del colegio','Datos / parámetros actualizados','edit');saveDB();render();toast('Configuración guardada.','success');}
 function resetDemo(){openModal(confirmHTML('Restablecer datos demo','¿Seguro que querés borrar todos los datos y volver a la demo inicial? Esta acción no se puede deshacer.','resetDemoOk()','Restablecer'));}
 function resetDemoOk(){DB=freshDB();saveDB();closeModal();applyBrand();buildNav();go('dashboard');toast('Datos restablecidos.','success');}
 
