@@ -253,8 +253,13 @@ window.auloraBackendReady=function(){
       const em=(fu.email||'').toLowerCase();
       let prof=null;try{prof=await window.AuloraBackend.myProfile();}catch(e){}
       let u=DB.users.find(x=>x.email&&x.email.toLowerCase()===em&&x.activo);
-      if(!u){const rol=(prof&&prof.rol)||'admin';u={id:'u'+Date.now(),nombre:(prof&&prof.nombre)||em.split('@')[0]||'Usuario',email:fu.email,rol,activo:true,perms:rolePreset(rol)};DB.users.unshift(u);window.AuloraBackend.save(DB);}
-      if(prof&&prof.rol&&prof.rol!==u.rol){u.rol=prof.rol;u.perms=rolePreset(prof.rol);} // sincronizar rol del servidor SOLO si cambió
+      if(!u){
+        // Usuario nuevo: si NO hay perfil en servidor, no entra (evita escalada).
+        if(!prof||!prof.rol){toast('Tu cuenta no tiene perfil asignado en este colegio.','danger');window.AuloraBackend.signOut();return;}
+        u={id:'u'+Date.now(),nombre:prof.nombre||em.split('@')[0]||'Usuario',email:fu.email,rol:prof.rol,activo:true,perms:rolePreset(prof.rol)};
+        DB.users.unshift(u);window.AuloraBackend.save(DB);
+      }
+      // Usuario existente: respetar lo que el admin configuró en la app (rol y permisos). El servidor NO pisa.
       loginAs(u);
     }else{_authed=false;CURRENT=null;const a=document.getElementById('app');const l=document.getElementById('login');if(a)a.style.display='none';if(l)l.style.display='flex';}
   });
