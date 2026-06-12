@@ -51,7 +51,10 @@ if (PLACEHOLDER) {
       saveT = setTimeout(doSave, 700);
     },
     flush: () => { if (saveT) { clearTimeout(saveT); saveT = null; } return doSave(); },
-    myProfile: async () => { const { data: { user } } = await sb.auth.getUser(); if (!user) return null; const { data } = await sb.from('perfiles').select('rol,nombre').eq('id', user.id).maybeSingle(); return data || null; }
+    myProfile: async () => { const { data: { user } } = await sb.auth.getUser(); if (!user) return null; const { data } = await sb.from('perfiles').select('rol,nombre').eq('id', user.id).maybeSingle(); return data || null; },
+    upsertProfile: async (email, nombre, rol, activo) => { const { data, error } = await sb.rpc('aulora_upsert_perfil', { p_email: email, p_nombre: nombre, p_rol: rol, p_activo: activo }); if (error) throw error; return data; },
+    deleteProfile: async (email) => { const { error } = await sb.rpc('aulora_eliminar_perfil', { p_email: email }); if (error) throw error; },
+    linkPending: async () => { try { await sb.rpc('aulora_vincular_pendientes'); } catch (e) { console.warn('[Aulora] link pendientes:', e); } }
   };
   if (window.auloraBackendReady) window.auloraBackendReady();
 }
