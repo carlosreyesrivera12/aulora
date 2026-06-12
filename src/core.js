@@ -850,6 +850,7 @@ function modalActividad(id){let a={nombre:'',categoria:'Deporte',dia:'Lunes',hor
      <div class="field"><label>Nombre</label><input id="ma_n" value="${esc(a.nombre)}"></div>
      <div class="field"><label>Categoría</label><select id="ma_cat">${['Deporte','Idioma','Arte','Música','Tecnología','Apoyo escolar'].map(x=>`<option ${a.categoria===x?'selected':''}>${x}</option>`).join('')}</select></div>
      <div class="field"><label>Profesor/a</label><input id="ma_prof" value="${esc(a.profesor)}"></div>
+     ${perm('ver_actividades')?`<div class="field"><label>Proveedor (email)</label><input id="ma_prov" placeholder="email del usuario proveedor" value="${esc(a.proveedorEmail||'')}"><div class="hint">Si lo asignás, ese proveedor verá esta actividad en su panel.</div></div>`:''}
      <div class="field"><label>Lugar / aula</label><input id="ma_aula" value="${esc(a.aula)}"></div>
      <div class="form-section">Horario y período</div>
      <div class="field"><label>Día</label><select id="ma_d">${['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'].map(x=>`<option ${a.dia===x?'selected':''}>${x}</option>`).join('')}</select></div>
@@ -865,7 +866,16 @@ function modalActividad(id){let a={nombre:'',categoria:'Deporte',dia:'Lunes',hor
      <div class="field full"><label>Materiales necesarios</label><input id="ma_mat" value="${esc(a.material)}"></div>
      <div class="field full"><label>Descripción</label><textarea id="ma_desc">${esc(a.descripcion)}</textarea></div>
    </div></div><div class="modal-foot">${id?`<button class="btn btn-danger" style="margin-right:auto" onclick="deleteActividad('${id}')">Eliminar</button>`:''}<button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="saveActividad('${id||''}')">Guardar</button></div>`,true);}
-function saveActividad(id){if(!(perm('ver_actividades')||perm('registrar_actividades'))){toast('Sin permiso.','danger');return;}if(!perm('ver_actividades')){if(!id){toast('Solo administradores pueden crear actividades.','danger');return;}const orig=DB.activities.find(x=>x.id===id);if(!orig||(orig.profesor||'').toLowerCase().trim()!==(CURRENT.nombre||'').toLowerCase().trim()){toast('Sin permiso sobre esta actividad.','danger');return;}}const data={nombre:$('#ma_n').value,categoria:$('#ma_cat').value,dia:$('#ma_d').value,horaInicio:$('#ma_hi').value,horaFin:$('#ma_hf').value,aula:$('#ma_aula').value,profesor:$('#ma_prof').value,cupo:+$('#ma_cupo').value,cuota:+$('#ma_cuota').value,periodo:$('#ma_per').value,estado:$('#ma_est').value,dirigidoA:$('#ma_dir').value,material:$('#ma_mat').value,descripcion:$('#ma_desc').value,color:$('#ma_color').value};
+function saveActividad(id){
+  if(!(perm('ver_actividades')||perm('registrar_actividades'))){toast('Sin permiso.','danger');return;}
+  const miEmail=(CURRENT&&CURRENT.email||'').toLowerCase().trim();
+  if(!perm('ver_actividades')){
+    if(!id){toast('Solo administradores pueden crear actividades.','danger');return;}
+    const orig=DB.activities.find(x=>x.id===id);
+    if(!orig||(orig.proveedorEmail||'').toLowerCase().trim()!==miEmail){toast('Sin permiso sobre esta actividad.','danger');return;}
+  }
+  const provEmailField=document.getElementById('ma_prov')?$('#ma_prov').value:'';
+  const data={nombre:$('#ma_n').value,categoria:$('#ma_cat').value,dia:$('#ma_d').value,horaInicio:$('#ma_hi').value,horaFin:$('#ma_hf').value,aula:$('#ma_aula').value,profesor:$('#ma_prof').value,cupo:+$('#ma_cupo').value,cuota:+$('#ma_cuota').value,periodo:$('#ma_per').value,estado:$('#ma_est').value,dirigidoA:$('#ma_dir').value,material:$('#ma_mat').value,descripcion:$('#ma_desc').value,color:$('#ma_color').value,proveedorEmail:perm('ver_actividades')?provEmailField:(DB.activities.find(x=>x.id===id)||{}).proveedorEmail||''};
   if(!data.nombre){toast('Indicá el nombre.','warn');return;}
   if(id){Object.assign(DB.activities.find(x=>x.id===id),data);logAudit('editar','Actividad · '+data.nombre,'Datos actualizados','edit');toast('Actividad actualizada.','success');}
   else{DB.activities.push({id:'act'+Date.now(),...data});logAudit('crear','Actividad · '+data.nombre,'Nueva actividad','create');toast('Actividad creada.','success');}
