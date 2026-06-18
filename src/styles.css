@@ -291,3 +291,23 @@ tbody tr{transition:.1s}tbody tr:hover{background:var(--surface-2)}
 .mural .ph{aspect-ratio:1;border-radius:14px;background-size:cover;background-position:center;cursor:pointer;transition:transform .3s;animation:fadeUp .6s both}
 .mural .ph:hover{transform:scale(1.04)}
 @media (prefers-reduced-motion:reduce){.imm-hero .bg,.imm-hero .orb,.gallery .slide,.badge3d::after{animation:none!important}}
+
+/* ===== Navegación móvil / responsive ===== */
+.nav-toggle{display:none;width:40px;height:40px;border-radius:10px;border:1.5px solid var(--line);background:var(--surface);align-items:center;justify-content:center;color:var(--ink-soft);flex-shrink:0}
+.nav-toggle svg{width:20px;height:20px}
+.nav-toggle:hover{border-color:var(--ink-soft)}
+.sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(20,19,42,.45);z-index:30}
+.sidebar-overlay.show{display:block}
+@media(max-width:780px){
+  .nav-toggle{display:flex}
+  .sidebar{z-index:40;box-shadow:var(--shadow-lg)}
+  .sidebar.open{transform:none}
+  .topbar{flex-wrap:wrap;height:auto;min-height:64px;padding:10px 14px}
+  .topbar .pagesub{display:none}
+  .topbar > div:nth-child(2){flex:1;min-width:0}
+  .search{margin-left:0;order:10;flex:1 1 100%}
+  .search input{width:100%}
+  .content{padding:16px}
+  .table-wrap{overflow-x:auto}
+  table{min-width:620px}
+}

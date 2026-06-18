@@ -19,7 +19,7 @@ const PERMS=[
 function rolePreset(r){const all=Object.fromEntries(PERMS.map(p=>[p[0],true]));const none=Object.fromEntries(PERMS.map(p=>[p[0],false]));const ON=(...k)=>{const o={...none};k.forEach(x=>o[x]=true);return o;};
   switch(r){
     case 'super_admin':return all;
-    case 'supervisor':return {...all,gestionar_usuarios:false,editar_config:false};
+    case 'supervisor':return {...all,editar_config:false};
     case 'admin':return {...all,eliminar_pagos:false,ver_auditoria:false,gestionar_usuarios:false,editar_config:false,editar_contabilidad:false,editar_afa:false};
     case 'auditor':return ON('ver_dashboard','ver_estadisticas','ver_alumnos','ver_pagos','ver_auditoria','ver_contabilidad','ver_afa');
     case 'contador':return ON('ver_dashboard','ver_estadisticas','ver_alumnos','ver_pagos','editar_pagos','eliminar_pagos','importar_pagos','ver_contabilidad','editar_contabilidad');
@@ -29,6 +29,10 @@ function rolePreset(r){const all=Object.fromEntries(PERMS.map(p=>[p[0],true]));c
     case 'afa':return ON('ver_dashboard','ver_afa','editar_afa','ver_comunicaciones','ver_actividades');
     default:return none;}}
 const ROLE_LABEL={super_admin:'Super Admin',supervisor:'Supervisor',admin:'Administración',auditor:'Auditoría',contador:'Contaduría',profesor:'Profesorado',comedor:'Comedor',proveedor_actividades:'Proveedor actividades',afa:'AFA / AMPA',alumno:'Alumno/a',familia:'Familia'};
+const ROLE_RANK={super_admin:100,supervisor:80,admin:60,contador:40,auditor:40,profesor:40,comedor:40,proveedor_actividades:40,afa:40,familia:0,alumno:0};
+function roleRank(r){return ROLE_RANK[r]||0;}
+// Un usuario puede gestionar (editar/bloquear/eliminar) a otro de rango estrictamente menor; el super_admin gestiona a todos salvo a sí mismo.
+function canManageUser(u){if(!CURRENT||!u)return false;if(u.id===CURRENT.id)return false;if(CURRENT.rol==='super_admin')return true;return roleRank(CURRENT.rol)>roleRank(u.rol);}
 
 const SEED_USERS=[
   {id:'u1',nombre:'Marta Ferreyra',email:'admin@aulora.edu.ar',rol:'super_admin',activo:true,perms:rolePreset('super_admin'),demo:'super'},
@@ -230,6 +234,8 @@ function resizeImage(file,max,cb){const r=new FileReader();r.onload=e=>{const im
 function toast(msg,type){type=type||'success';const icons={success:'<path d="M20 6L9 17l-5-5"/>',danger:'<path d="M18 6L6 18M6 6l12 12"/>',warn:'<path d="M12 9v4M12 17h.01M10.3 3.9l-8 14A2 2 0 004 21h16a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/>',info:'<path d="M12 16v-4M12 8h.01"/><circle cx="12" cy="12" r="9"/>'};const t=document.createElement('div');t.className='toast '+type;t.innerHTML=`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${icons[type]||icons.success}</svg>${msg}`;$('#toasts').appendChild(t);setTimeout(()=>{t.style.opacity='0';t.style.transform='translateX(40px)';setTimeout(()=>t.remove(),250);},3600);}
 
 function applyBrand(){$('#brandName').textContent=cfg().nombre;$('#brandSub').textContent=cfg().sub;$('#loginBrand').textContent=cfg().nombre;const b=document.querySelector('.top-bell');if(b)b.onclick=showNotifs;}
+function toggleSidebar(){const sb=document.getElementById('sidebar'),ov=document.getElementById('sideOverlay');if(!sb)return;const open=sb.classList.toggle('open');if(ov)ov.classList.toggle('show',open);}
+function closeSidebar(){const sb=document.getElementById('sidebar'),ov=document.getElementById('sideOverlay');if(sb)sb.classList.remove('open');if(ov)ov.classList.remove('show');}
 applyBrand();
 const isPortalRole=r=>r==='familia'||r==='alumno';
 function quickLogin(d){if(window.AuloraBackend&&window.AuloraBackend.enabled){toast('Accesos demo deshabilitados: iniciá sesión con tu cuenta.','warn');return;}if(d==='fam'){loginAs({nombre:'Familia '+studentName(DB.students[0]),rol:'familia',perms:{}});return;}loginAs(DB.users.find(x=>x.demo===d));}
@@ -257,6 +263,7 @@ window.auloraBackendReady=function(){
       const em=(fu.email||'').toLowerCase();
       try{if(window.AuloraBackend.linkPending)await window.AuloraBackend.linkPending();}catch(e){}
       let prof=null;try{prof=await window.AuloraBackend.myProfile();}catch(e){}
+      if(prof&&prof.activo===false){toast('Tu acceso está bloqueado. Contactá con el colegio.','danger');window.AuloraBackend.signOut();return;}
       let u=DB.users.find(x=>x.email&&x.email.toLowerCase()===em&&x.activo);
       if(!u){
         // Usuario nuevo: si NO hay perfil en servidor, no entra (evita escalada).
@@ -299,7 +306,7 @@ function buildNav(){
   let h='';NAV.forEach(n=>{if(n.g){h+=`<div class="nav-group">${n.g}</div>`;return;}if(!perm(n.perm))return;const badge=n.badge&&overdue?`<span class="nav-badge">${overdue}</span>`:'';h+=`<button class="nav-item" data-v="${n.id}" onclick="go('${n.id}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${n.icon}</svg>${n.label}${badge}</button>`;});$('#sideNav').innerHTML=h;}
 function go(v){view=v;document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.v===v));
   const t={dashboard:['Dashboard','Resumen general del colegio'],estadisticas:['Estadísticas','Análisis y métricas detalladas'],alumnos:['Alumnos','Legajos, búsqueda y filtros'],'alumno-detalle':['Legajo del alumno',''],pagos:['Cuotas','Recibos, comprobantes y morosidad'],inscripciones:['Inscripciones','Matrícula por ciclo lectivo, cupos y lista de espera'],asistencia:['Asistencia','Toma diaria por curso y porcentajes'],calificaciones:['Calificaciones','Notas por materia, trimestre y boletín'],rendimiento:['Rendimiento académico','Estadística por clase y materia: qué destaca y qué reforzar'],calendario:['Calendario escolar','Actos, feriados, reuniones y exámenes'],reportes:['Reportes financieros','Ingresos, deudores y proyección'],comedor:['Comedor','Inscriptos, alergias y dietas'],actividades:['Actividades','Extraescolares, cupos e inscripciones'],comunicaciones:['Comunicaciones','Plantillas y envíos a familias'],auditoria:['Auditoría','Registro de cambios del sistema'],usuarios:['Usuarios y permisos','Control de acceso granular'],configuracion:['Configuración','Datos y ajustes del colegio'],contabilidad:['Contabilidad','Movimientos, ingresos, egresos y balance'],afa:['AFA / AMPA','Asociación de familias: socios, cuota y caja'],portal:['Portal del alumno','Tu información escolar']}[v]||['',''];
-  $('#pageTitle').textContent=t[0];$('#pageSub').textContent=t[1];$('#topSearch').style.display=(v==='alumnos'||v==='pagos')?'block':'none';render();}
+  $('#pageTitle').textContent=t[0];$('#pageSub').textContent=t[1];$('#topSearch').style.display=(v==='alumnos'||v==='pagos')?'block':'none';render();if(window.innerWidth<=780)closeSidebar();}
 
 function render(){const c=$('#content');const R={dashboard:viewDashboard,estadisticas:viewEstadisticas,alumnos:viewAlumnos,'alumno-detalle':viewAlumnoDetalle,pagos:viewPagos,inscripciones:viewInscripciones,asistencia:viewAsistencia,calificaciones:viewCalificaciones,calendario:viewCalendario,rendimiento:viewRendimiento,reportes:viewReportes,comedor:viewComedor,actividades:viewActividades,comunicaciones:viewComunicaciones,auditoria:viewAuditoria,usuarios:viewUsuarios,configuracion:viewConfig,contabilidad:viewContabilidad,afa:viewAFA,portal:viewPortal};c.innerHTML=(R[view]||(()=>''))();c.querySelectorAll('.view').forEach(v=>v.classList.add('active'));drawCharts();}
 
@@ -476,7 +483,7 @@ function viewAlumnos(){const list=filteredStudents();
    </div>`:''}
    <div class="table-wrap"><table><thead><tr><th>Alumno</th><th>Curso</th><th>Matrícula ${cfg().ciclo}</th><th>Tutor / contacto</th><th>Comedor</th><th>Cuotas</th><th></th></tr></thead><tbody>
    ${list.length?list.map(s=>{const st=s.pagos.map(realEstado);const bd=st.includes('vencido')?'b-danger':(st.includes('pendiente')?'b-warn':'b-success');const lbl=st.includes('vencido')?'Con mora':(st.includes('pendiente')?'Pendiente':'Al día');const ins=getIns(s,cfg().ciclo);
-     return `<tr><td><div class="cell-name">${avatarHTML(s)}<div><b>${studentName(s)}</b><small>DNI ${s.dni}</small></div></div></td>
+     return `<tr><td style="cursor:pointer" onclick="openStudent('${s.id}')"><div class="cell-name">${avatarHTML(s)}<div><b>${studentName(s)}</b><small>DNI ${s.dni}</small></div></div></td>
        <td><span class="badge b-info">${s.curso} · ${s.grupo}</span></td>
        <td>${ins?inscBadge(ins.estado):inscBadge('')}</td>
        <td><b style="font-size:13px">${s.tutor.nombre}</b><br><small style="color:var(--muted)">${s.tutor.tel}</small></td>
@@ -624,7 +631,7 @@ function viewAuditoria(){if(!perm('ver_auditoria'))return noPerm();let logs=DB.a
 function viewUsuarios(){if(!perm('gestionar_usuarios'))return noPerm();
   return `<div class="view"><div class="toolbar"><div class="grow"></div><button class="btn btn-primary btn-sm" onclick="modalUser()">+ Nuevo usuario</button></div>
    <div class="table-wrap" style="margin-bottom:22px"><table><thead><tr><th>Usuario</th><th>Email</th><th>Rol</th><th>Estado</th><th></th></tr></thead><tbody>
-   ${DB.users.map(u=>`<tr><td><div class="cell-name"><div class="avatar" style="background:${AV_COLORS[u.nombre.length%8]};width:32px;height:32px;font-size:12px">${initials(u.nombre)}</div><b>${u.nombre}</b></div></td><td><small>${u.email}</small></td><td><span class="badge ${u.rol==='super_admin'?'b-blue':(u.rol==='supervisor'?'b-warn':'b-grey')}">${ROLE_LABEL[u.rol]}</span></td><td><span class="badge ${u.activo?'b-success':'b-grey'}">${u.activo?'Activo':'Inactivo'}</span></td><td><div class="row-actions"><button class="btn btn-ghost btn-sm" onclick="modalUser('${u.id}')">Permisos</button></div></td></tr>`).join('')}
+   ${DB.users.slice().sort((a,b)=>roleRank(b.rol)-roleRank(a.rol)||a.nombre.localeCompare(b.nombre)).map(u=>`<tr><td><div class="cell-name"><div class="avatar" style="background:${AV_COLORS[u.nombre.length%8]};width:32px;height:32px;font-size:12px">${initials(u.nombre)}</div><b>${u.nombre}</b></div></td><td><small>${u.email}</small></td><td><span class="badge ${u.rol==='super_admin'?'b-blue':(u.rol==='supervisor'?'b-warn':'b-grey')}">${ROLE_LABEL[u.rol]}</span></td><td><span class="badge ${u.activo?'b-success':'b-grey'}">${u.activo?'Activo':'Inactivo'}</span></td><td><div class="row-actions">${canManageUser(u)?`<button class="btn btn-ghost btn-sm" onclick="modalUser('${u.id}')">Permisos</button><button class="btn btn-ghost btn-sm" onclick="toggleUserActivo('${u.id}')">${u.activo?'Bloquear':'Activar'}</button><button class="icon-btn danger" title="Eliminar" onclick="deleteUser('${u.id}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/></svg></button>`:'<span style="color:var(--muted);font-size:12px">—</span>'}</div></td></tr>`).join('')}
    </tbody></table></div>
    <div class="panel"><div class="panel-head"><h3>Matriz de permisos por rol</h3><span class="sub">Accesos predefinidos</span></div><div class="panel-body">
      <div class="perm-grid"><div class="ph first">Permiso</div><div class="ph">Super Admin</div><div class="ph">Supervisor</div><div class="ph">Administración</div><div class="ph">Familia</div>
@@ -898,9 +905,13 @@ function aiConfirmar(sid,aid){confirmarActVacante(sid,aid);modalActInscriptos(ai
 
 /* ====================== MODALES: USUARIOS ====================== */
 function modalUser(id){let u={nombre:'',email:'',rol:'admin',activo:true,perms:rolePreset('admin')};if(id)u=DB.users.find(x=>x.id===id);
-  openModal(`<div class="modal-head"><h3>${id?'Editar usuario':'Nuevo usuario'}</h3><button class="x" onclick="closeModal()">✕</button></div><div class="modal-body"><div class="form-grid" style="margin-bottom:8px"><div class="field"><label>Nombre</label><input id="mu_n" value="${esc(u.nombre)}"></div><div class="field"><label>Email</label><input id="mu_e" value="${esc(u.email)}"></div><div class="field"><label>Rol base</label><select id="mu_r" onchange="applyRolePreset(this.value)">${['super_admin','supervisor','admin','auditor','contador','profesor','comedor','proveedor_actividades','afa'].map(r=>`<option value="${r}" ${u.rol===r?'selected':''}>${ROLE_LABEL[r]}</option>`).join('')}</select></div><div class="field"><label>Estado</label><select id="mu_a"><option value="1" ${u.activo?'selected':''}>Activo</option><option value="0" ${!u.activo?'selected':''}>Inactivo</option></select></div></div><label style="font-size:12.5px;font-weight:700;color:var(--ink-soft);display:block;margin:6px 0 10px">PERMISOS GRANULARES</label><div id="mu_perms">${PERMS.map(p=>`<div style="display:flex;align-items:center;padding:9px 0;border-bottom:1px dashed var(--line)"><span style="flex:1;font-size:13.5px">${p[1]}</span><div class="switch ${u.perms[p[0]]?'on':''}" data-p="${p[0]}" onclick="this.classList.toggle('on')"></div></div>`).join('')}</div></div><div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="saveUser('${id||''}')">Guardar usuario</button></div>`,true);}
+  openModal(`<div class="modal-head"><h3>${id?'Editar usuario':'Nuevo usuario'}</h3><button class="x" onclick="closeModal()">✕</button></div><div class="modal-body"><div class="form-grid" style="margin-bottom:8px"><div class="field"><label>Nombre</label><input id="mu_n" value="${esc(u.nombre)}"></div><div class="field"><label>Email</label><input id="mu_e" value="${esc(u.email)}"></div><div class="field"><label>Rol base</label><select id="mu_r" onchange="applyRolePreset(this.value)">${['super_admin','supervisor','admin','auditor','contador','profesor','comedor','proveedor_actividades','afa'].filter(r=>CURRENT.rol==='super_admin'||roleRank(r)<roleRank(CURRENT.rol)||r===u.rol).map(r=>`<option value="${r}" ${u.rol===r?'selected':''}>${ROLE_LABEL[r]}</option>`).join('')}</select></div><div class="field"><label>Estado</label><select id="mu_a"><option value="1" ${u.activo?'selected':''}>Activo</option><option value="0" ${!u.activo?'selected':''}>Inactivo</option></select></div></div><label style="font-size:12.5px;font-weight:700;color:var(--ink-soft);display:block;margin:6px 0 10px">PERMISOS GRANULARES</label><div id="mu_perms">${PERMS.map(p=>`<div style="display:flex;align-items:center;padding:9px 0;border-bottom:1px dashed var(--line)"><span style="flex:1;font-size:13.5px">${p[1]}</span><div class="switch ${u.perms[p[0]]?'on':''}" data-p="${p[0]}" onclick="this.classList.toggle('on')"></div></div>`).join('')}</div></div><div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="saveUser('${id||''}')">Guardar usuario</button></div>`,true);}
 function applyRolePreset(r){const preset=rolePreset(r);document.querySelectorAll('#mu_perms .switch').forEach(sw=>sw.classList.toggle('on',!!preset[sw.dataset.p]));}
-async function saveUser(id){const btn=event&&event.currentTarget;if(btn&&btn.disabled)return;if(btn){btn.disabled=true;btn.textContent='Guardando...';}const perms={};document.querySelectorAll('#mu_perms .switch').forEach(sw=>perms[sw.dataset.p]=sw.classList.contains('on'));const data={nombre:$('#mu_n').value,email:$('#mu_e').value,rol:$('#mu_r').value,activo:$('#mu_a').value==='1',perms};if(!data.nombre||!data.email){toast('Nombre y email obligatorios.','warn');if(btn){btn.disabled=false;btn.textContent='Guardar usuario';}return;}
+async function saveUser(id){const btn=event&&event.currentTarget;if(btn&&btn.disabled)return;if(btn){btn.disabled=true;btn.textContent='Guardando...';}
+  if(!perm('gestionar_usuarios')){toast('Sin permiso.','danger');if(btn){btn.disabled=false;btn.textContent='Guardar usuario';}return;}
+  if(id){const _t=DB.users.find(x=>x.id===id);if(_t&&!canManageUser(_t)){toast('No podés gestionar este usuario.','danger');if(btn){btn.disabled=false;btn.textContent='Guardar usuario';}return;}}
+  const perms={};document.querySelectorAll('#mu_perms .switch').forEach(sw=>perms[sw.dataset.p]=sw.classList.contains('on'));const data={nombre:$('#mu_n').value,email:$('#mu_e').value,rol:$('#mu_r').value,activo:$('#mu_a').value==='1',perms};if(!data.nombre||!data.email){toast('Nombre y email obligatorios.','warn');if(btn){btn.disabled=false;btn.textContent='Guardar usuario';}return;}
+  if(CURRENT.rol!=='super_admin'&&roleRank(data.rol)>=roleRank(CURRENT.rol)){toast('No podés asignar un rol igual o superior al tuyo.','danger');if(btn){btn.disabled=false;btn.textContent='Guardar usuario';}return;}
   if(id){Object.assign(DB.users.find(x=>x.id===id),data);logAudit('editar','Usuario · '+data.nombre,'Permisos / datos actualizados','edit');}
   else{DB.users.push({id:'u'+Date.now(),...data});logAudit('crear','Usuario · '+data.nombre,'Nuevo usuario · '+ROLE_LABEL[data.rol],'create');}
   saveDB();
@@ -910,6 +921,13 @@ async function saveUser(id){const btn=event&&event.currentTarget;if(btn&&btn.dis
     catch(e){toast('Guardado local OK, pero falló la sincronización: '+(e.message||e.code||'error'),'warn');}
   } else { toast('Usuario guardado.','success'); }
   closeModal();render();}
+function toggleUserActivo(id){const u=DB.users.find(x=>x.id===id);if(!u)return;if(!canManageUser(u)){toast('No podés gestionar este usuario.','danger');return;}u.activo=!u.activo;logAudit('editar','Usuario · '+u.nombre,u.activo?'Acceso reactivado':'Ingreso bloqueado','edit');saveDB();render();
+  if(window.AuloraBackend&&window.AuloraBackend.enabled&&window.AuloraBackend.upsertProfile){window.AuloraBackend.upsertProfile(u.email,u.nombre,u.rol,u.activo).catch(e=>toast('Estado guardado local; no se sincronizó: '+(e.message||e.code||'error'),'warn'));}
+  toast(u.activo?'Acceso reactivado.':'Ingreso bloqueado.',u.activo?'success':'warn');}
+function deleteUser(id){const u=DB.users.find(x=>x.id===id);if(!u)return;if(!canManageUser(u)){toast('No podés eliminar este usuario.','danger');return;}openModal(confirmHTML('Eliminar usuario',`¿Eliminar a <b>${esc(u.nombre)}</b> (${esc(u.email)})? Pierde el acceso al sistema. Queda registrado en auditoría.`,`confirmDeleteUser('${id}')`,'Eliminar'));}
+function confirmDeleteUser(id){const u=DB.users.find(x=>x.id===id);if(!u)return;if(!canManageUser(u)){toast('Sin permiso.','danger');return;}const email=u.email;DB.users=DB.users.filter(x=>x.id!==id);logAudit('eliminar','Usuario · '+u.nombre,'Usuario eliminado','delete');saveDB();closeModal();render();
+  if(window.AuloraBackend&&window.AuloraBackend.enabled&&window.AuloraBackend.deleteProfile){window.AuloraBackend.deleteProfile(email).catch(e=>toast('Eliminado local; falló en el servidor: '+(e.message||e.code||'error'),'warn'));}
+  toast('Usuario eliminado.','danger');}
 
 
 /* ====================== ASISTENCIA DIARIA (#1) ====================== */
