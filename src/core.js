@@ -504,7 +504,7 @@ function viewAlumnoDetalle(){const s=DB.students.find(x=>x.id===openStudentId);i
 function tabInfo(s){return `<div class="detail-grid">
    <div class="panel"><div class="panel-head"><h3>Datos personales</h3></div><div class="panel-body" style="display:flex;gap:18px;align-items:flex-start">
      <div style="text-align:center">${s.foto&&s.autorizacionImagen.permitida?`<img class="photo-lg" src="${s.foto}">`:`<div class="photo-ph" style="background:${s.color}">${initials(studentName(s))}</div>`}${perm('editar_documentos')?`<button class="btn btn-ghost btn-sm" style="margin-top:10px" onclick="modalFoto('${s.id}')">📷 Foto</button>`:''}</div>
-     <div style="flex:1"><div class="info-row"><span class="k">DNI</span><span class="v">${s.dni}</span></div><div class="info-row"><span class="k">Nacimiento</span><span class="v">${s.nacimiento}</span></div><div class="info-row"><span class="k">Domicilio</span><span class="v">${s.direccion}</span></div><div class="info-row"><span class="k">Localidad</span><span class="v">${s.cp} ${s.ciudad}, ${cfg().provincia}</span></div><div class="info-row"><span class="k">Autoriz. imagen</span><span class="v">${s.autorizacionImagen.permitida?'✅ Sí ('+s.autorizacionImagen.fecha+')':'⚠️ No otorgada'}</span></div></div></div></div>
+     <div style="flex:1"><div class="info-row"><span class="k">DNI</span><span class="v">${s.dni}</span></div><div class="info-row"><span class="k">Nacimiento</span><span class="v">${s.nacimiento}</span></div><div class="info-row"><span class="k">Domicilio</span><span class="v">${s.direccion}</span></div><div class="info-row"><span class="k">Localidad</span><span class="v">${s.cp} ${s.ciudad}, ${cfg().provincia}</span></div><div class="info-row"><span class="k">Autoriz. imagen</span><span class="v">${s.autorizacionImagen.permitida?'✅ Sí ('+s.autorizacionImagen.fecha+')':'⚠️ No otorgada'}</span></div>${camposResumenHTML(s)}</div></div></div>
    <div class="panel"><div class="panel-head"><h3>Tutores y emergencia</h3></div><div class="panel-body">
      <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Tutor/a principal</div>
      <div class="info-row"><span class="k">${s.tutor.relacion}</span><span class="v">${s.tutor.nombre}</span></div><div class="info-row"><span class="k">Email</span><span class="v">${s.tutor.email}</span></div><div class="info-row"><span class="k">Teléfono</span><span class="v">${s.tutor.tel}</span></div>
@@ -660,7 +660,7 @@ function viewConfig(){if(!perm('editar_config'))return noPerm();const c=cfg();
      <div class="form-section">Datos del prototipo</div>
      <p style="color:var(--muted);font-size:13px;margin-bottom:12px">Restablece todos los datos de demostración (alumnos, cuotas, cursos, plantillas, auditoría).</p>
      <button class="btn btn-danger" onclick="resetDemo()">↺ Restablecer datos demo</button></div></div>
-  </div></div>`;}
+  </div>${panelFormAlumno()}</div>`;}
 function saveConfig(){if(!perm('editar_config')){toast('Sin permiso para editar configuración.','danger');return;}const c=cfg();c.centroNombre=$('#cf_centro').value;c.nombre=$('#cf_nombre').value;c.sub=$('#cf_sub').value;c.direccion=$('#cf_dir').value;if($('#cf_prov'))c.provincia=$('#cf_prov').value;c.ciclo=$('#cf_curso').value;c.moneda=$('#cf_mon').value;if($('#cf_pais'))c.pais=$('#cf_pais').value;if($('#cf_obj'))c.objetivoCobro=+$('#cf_obj').value;if($('#cf_dv'))c.diaVenc=+$('#cf_dv').value;if($('#cf_mora'))c.moraPctDia=+$('#cf_mora').value;if($('#cf_pri'))c.prioridadEspera=$('#cf_pri').value;if($('#cf_dh'))c.descHermanos=+$('#cf_dh').value;if($('#cf_db'))c.descBeca=+$('#cf_db').value;applyBrand();logAudit('editar','Configuración del colegio','Datos / parámetros actualizados','edit');saveDB();render();toast('Configuración guardada.','success');}
 function resetDemo(){openModal(confirmHTML('Restablecer datos demo','¿Seguro que querés borrar todos los datos y volver a la demo inicial? Esta acción no se puede deshacer.','resetDemoOk()','Restablecer'));}
 function resetDemoOk(){DB=freshDB();saveDB();closeModal();applyBrand();buildNav();go('dashboard');toast('Datos restablecidos.','success');}
@@ -735,39 +735,109 @@ function doImport(type){if(!perm('importar_pagos')&&!perm('editar_alumnos')){toa
   r.readAsText(f);}
 
 /* ====================== MODALES: ALUMNO ====================== */
-function modalStudent(id){let s={nombre:'',apellidos:'',curso:CURSOS[0],grupo:'A',dni:'',nacimiento:'',direccion:'',cp:'',ciudad:'',autorizacionImagen:{permitida:false,fecha:''},tutor:{nombre:'',relacion:'Madre',email:'',tel:''},tutor2:null,emergencia:[{nombre:'',relacion:'',tel:''}],comedor:{inscrito:false,plan:'—',alergias:'Ninguna',medicacion:'',observaciones:''}};
-  if(id)s=DB.students.find(x=>x.id===id);const e0=s.emergencia[0]||{nombre:'',relacion:'',tel:''};
-  openModal(`<div class="modal-head"><h3>${id?'Editar':'Nuevo'} alumno</h3><button class="x" onclick="closeModal()">✕</button></div><div class="modal-body"><div class="form-grid">
+const ALUMNO_BUILTIN=[['dni','DNI'],['nacimiento','Nacimiento'],['direccion','Domicilio'],['cploc','CP / Localidad'],['autorizImagen','Autorización de imagen'],['beca','Beca']];
+const REL_OPC=['Madre','Padre','Tutor/a legal','Contacto de emergencia','Otro'];
+function ensureCfgArrays(){if(!cfg().camposAlumno)cfg().camposAlumno=[];if(!cfg().alumnoBuiltin)cfg().alumnoBuiltin={};}
+function builtinCfg(k){const o=(cfg().alumnoBuiltin||{})[k]||{};const d=ALUMNO_BUILTIN.find(x=>x[0]===k);return {label:(o.label&&o.label.trim())||(d?d[1]:k),activo:o.activo!==false};}
+function campoAlumnoInput(c,val){val=(val==null||val==='')?(c.porDefecto||''):val;const id='mx_'+c.id;
+  if(c.tipo==='seleccion')return `<select id="${id}">${(c.opciones||[]).map(o=>`<option ${String(val)===String(o)?'selected':''}>${esc(o)}</option>`).join('')}</select>`;
+  if(c.tipo==='numero')return `<input id="${id}" type="number" value="${esc(String(val))}">`;
+  if(c.tipo==='fecha')return `<input id="${id}" type="date" value="${esc(String(val))}">`;
+  return `<input id="${id}" value="${esc(String(val))}">`;}
+function contactoRowHTML(ct){ct=ct||{relacion:'Madre',nombre:'',email:'',tel:''};
+  return `<div class="contacto-row" style="border:1px solid var(--line);border-radius:var(--r-sm);padding:12px;margin-bottom:10px">
+   <div style="display:flex;gap:10px;align-items:flex-end;margin-bottom:8px">
+     <div class="field" style="margin:0;flex:1"><label>Relación</label><select class="ct-rel">${REL_OPC.map(r=>`<option ${ct.relacion===r?'selected':''}>${r}</option>`).join('')}</select></div>
+     <button class="icon-btn danger" title="Quitar contacto" onclick="this.closest('.contacto-row').remove()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/></svg></button>
+   </div>
+   <div class="form-grid">
+     <div class="field"><label>Nombre</label><input class="ct-nom" value="${esc(ct.nombre||'')}"></div>
+     <div class="field"><label>Email</label><input class="ct-email" value="${esc(ct.email||'')}"></div>
+     <div class="field full"><label>Teléfono</label><input class="ct-tel" value="${esc(ct.tel||'')}"></div>
+   </div></div>`;}
+function addContacto(){const c=document.getElementById('ms_contactos');if(c)c.insertAdjacentHTML('beforeend',contactoRowHTML());}
+function camposResumenHTML(s){const campos=(cfg().camposAlumno||[]).filter(c=>c.activo!==false);if(!campos.length)return '';return campos.map(c=>{let v=(s.extra||{})[c.id];if(c.tipo==='switch')v=(v===true||v==='true')?'Sí':'No';if(v===undefined||v==='')v='—';return `<div class="info-row"><span class="k">${esc(c.label)}</span><span class="v">${esc(String(v))}</span></div>`;}).join('');}
+
+function modalStudent(id){
+  const isNew=!id;
+  let s=isNew?{nombre:'',apellidos:'',curso:CURSOS[0],grupo:'A',dni:'',nacimiento:'',direccion:'',cp:'',ciudad:'',autorizacionImagen:{permitida:false,fecha:''},beca:false,tutor:{},tutor2:null,emergencia:[],comedor:{inscrito:false,plan:'—',alergias:'Ninguna',medicacion:'',observaciones:''},extra:{}}:DB.students.find(x=>x.id===id);
+  if(!s)return;
+  const bf=builtinCfg;
+  let cont=(s.contactos&&s.contactos.length)?s.contactos.slice():[];
+  if(!cont.length&&!isNew){
+    if(s.tutor&&(s.tutor.nombre||s.tutor.email||s.tutor.tel))cont.push({relacion:s.tutor.relacion||'Madre',nombre:s.tutor.nombre||'',email:s.tutor.email||'',tel:s.tutor.tel||''});
+    if(s.tutor2&&s.tutor2.nombre)cont.push({relacion:s.tutor2.relacion||'Padre',nombre:s.tutor2.nombre,email:s.tutor2.email||'',tel:s.tutor2.tel||''});
+    (s.emergencia||[]).forEach(e=>{if(e&&e.nombre)cont.push({relacion:'Contacto de emergencia',nombre:e.nombre,email:'',tel:e.tel||''});});
+  }
+  if(!cont.length)cont=[{relacion:'Madre',nombre:'',email:'',tel:''}];
+  const campos=(cfg().camposAlumno||[]).filter(c=>c.activo!==false);
+  const extraHTML=campos.map(c=>{const val=(s.extra||{})[c.id];
+    if(c.tipo==='switch')return `<div class="full check"><div class="switch ${(val===true||val==='true')?'on':''}" id="mx_${c.id}" onclick="this.classList.toggle('on')"></div><span><b>${esc(c.label)}</b></span></div>`;
+    return `<div class="field"><label>${esc(c.label)}</label>${campoAlumnoInput(c,val)}</div>`;}).join('');
+  openModal(`<div class="modal-head"><h3>${isNew?'Nuevo':'Editar'} alumno</h3><button class="x" onclick="closeModal()">✕</button></div><div class="modal-body"><div class="form-grid">
      <div class="form-section">Datos del alumno</div>
      <div class="field"><label>Nombre</label><input id="ms_n" value="${esc(s.nombre)}"></div>
      <div class="field"><label>Apellido</label><input id="ms_a" value="${esc(s.apellidos)}"></div>
      <div class="field"><label>Curso</label><select id="ms_c">${CURSOS.map(c=>`<option ${s.curso===c?'selected':''}>${c}</option>`).join('')}</select></div>
      <div class="field"><label>División</label><select id="ms_g"><option ${s.grupo==='A'?'selected':''}>A</option><option ${s.grupo==='B'?'selected':''}>B</option></select></div>
-     <div class="field"><label>DNI</label><input id="ms_dni" value="${esc(s.dni)}"></div>
-     <div class="field"><label>Nacimiento</label><input id="ms_nac" type="date" value="${s.nacimiento}"></div>
-     <div class="field"><label>Domicilio</label><input id="ms_dir" value="${esc(s.direccion)}"></div>
-     <div class="field"><label>CP / Localidad</label><input id="ms_ciu" value="${esc((s.cp?s.cp+' ':'')+s.ciudad)}"></div>
-     <div class="full check"><div class="switch ${s.autorizacionImagen.permitida?'on':''}" id="ms_img" onclick="this.classList.toggle('on')"></div><span><b>Autorización de imagen</b> — permite usar fotos del alumno</span></div>
-     <div class="full check"><div class="switch ${s.beca?'on':''}" id="ms_beca" onclick="this.classList.toggle('on')"></div><span><b>Beca</b> — aplica descuento automático en la cuota</span></div>
-     <div class="form-section">Tutor/a principal</div>
-     <div class="field"><label>Nombre</label><input id="ms_tn" value="${esc(s.tutor.nombre)}"></div>
-     <div class="field"><label>Relación</label><select id="ms_tr"><option ${s.tutor.relacion==='Madre'?'selected':''}>Madre</option><option ${s.tutor.relacion==='Padre'?'selected':''}>Padre</option><option ${s.tutor.relacion==='Tutor/a legal'?'selected':''}>Tutor/a legal</option></select></div>
-     <div class="field"><label>Email</label><input id="ms_te" value="${esc(s.tutor.email)}"></div>
-     <div class="field"><label>Teléfono</label><input id="ms_tt" value="${esc(s.tutor.tel)}"></div>
-     <div class="form-section">Contacto de emergencia</div>
-     <div class="field"><label>Nombre</label><input id="ms_en" value="${esc(e0.nombre)}"></div>
-     <div class="field"><label>Relación</label><input id="ms_er" value="${esc(e0.relacion)}"></div>
-     <div class="field full"><label>Teléfono</label><input id="ms_et" value="${esc(e0.tel)}"></div>
+     ${bf('dni').activo?`<div class="field"><label>${esc(bf('dni').label)}</label><input id="ms_dni" value="${esc(s.dni)}"></div>`:''}
+     ${bf('nacimiento').activo?`<div class="field"><label>${esc(bf('nacimiento').label)}</label><input id="ms_nac" type="date" value="${s.nacimiento||''}"></div>`:''}
+     ${bf('direccion').activo?`<div class="field"><label>${esc(bf('direccion').label)}</label><input id="ms_dir" value="${esc(s.direccion)}"></div>`:''}
+     ${bf('cploc').activo?`<div class="field"><label>${esc(bf('cploc').label)}</label><input id="ms_ciu" value="${esc((s.cp?s.cp+' ':'')+(s.ciudad||''))}"></div>`:''}
+     ${bf('autorizImagen').activo?`<div class="full check"><div class="switch ${s.autorizacionImagen&&s.autorizacionImagen.permitida?'on':''}" id="ms_img" onclick="this.classList.toggle('on')"></div><span><b>${esc(bf('autorizImagen').label)}</b> — permite usar fotos del alumno</span></div>`:''}
+     ${bf('beca').activo?`<div class="full check"><div class="switch ${s.beca?'on':''}" id="ms_beca" onclick="this.classList.toggle('on')"></div><span><b>${esc(bf('beca').label)}</b> — aplica descuento automático en la cuota</span></div>`:''}
+     ${campos.length?`<div class="form-section">Datos adicionales</div>${extraHTML}`:''}
+     <div class="form-section" style="display:flex;align-items:center"><span style="flex:1">Tutores y contactos</span><button class="btn btn-ghost btn-sm" style="text-transform:none;letter-spacing:0" onclick="addContacto()">+ Agregar contacto</button></div>
+     <div class="full" id="ms_contactos">${cont.map(contactoRowHTML).join('')}</div>
      <div class="form-section">Comedor y salud</div>
      <div class="field"><label>Comedor</label><select id="ms_com"><option value="no" ${!s.comedor.inscrito?'selected':''}>No inscripto</option><option value="Fijo 5 días" ${s.comedor.plan==='Fijo 5 días'?'selected':''}>Fijo 5 días</option><option value="Vianda 3 días" ${s.comedor.plan==='Vianda 3 días'?'selected':''}>Vianda 3 días</option></select></div>
      <div class="field"><label>Alergias / dieta</label><select id="ms_al">${ALERGIAS.map(a=>`<option ${s.comedor.alergias===a?'selected':''}>${a}</option>`).join('')}</select></div>
      <div class="field full"><label>Medicación / notas de salud</label><input id="ms_med" value="${esc(s.comedor.medicacion)}"></div>
    </div></div><div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="saveStudent('${id||''}')">Guardar</button></div>`,true);}
-function saveStudent(id){if(!perm('editar_alumnos')){toast('Sin permiso para editar alumnos.','danger');return;}const com=$('#ms_com').value;const parts=$('#ms_ciu').value.trim().split(' ');const cp=/^\d/.test(parts[0])?parts.shift():'';const ciudad=parts.join(' ');const imgOn=document.getElementById('ms_img').classList.contains('on');const curso=$('#ms_c').value;
-  const data={nombre:$('#ms_n').value,apellidos:$('#ms_a').value,curso,grupo:$('#ms_g').value,dni:$('#ms_dni').value,nacimiento:$('#ms_nac').value,direccion:$('#ms_dir').value,cp,ciudad,beca:document.getElementById('ms_beca').classList.contains('on'),autorizacionImagen:{permitida:imgOn,fecha:imgOn?today.toISOString().slice(0,10):''},tutor:{nombre:$('#ms_tn').value,relacion:$('#ms_tr').value,email:$('#ms_te').value,tel:$('#ms_tt').value},emergencia:[{nombre:$('#ms_en').value,relacion:$('#ms_er').value,tel:$('#ms_et').value}],comedor:{inscrito:com!=='no',plan:com==='no'?'—':com,alergias:$('#ms_al').value,medicacion:$('#ms_med').value,observaciones:''}};
+function saveStudent(id){if(!perm('editar_alumnos')){toast('Sin permiso para editar alumnos.','danger');return;}
+  const g=k=>document.getElementById(k);
+  const com=$('#ms_com').value;const curso=$('#ms_c').value;
+  let cp='',ciudad='';if(g('ms_ciu')){const parts=g('ms_ciu').value.trim().split(' ');cp=/^\d/.test(parts[0])?parts.shift():'';ciudad=parts.join(' ');}
+  const contactos=[...document.querySelectorAll('#ms_contactos .contacto-row')].map(r=>({relacion:r.querySelector('.ct-rel').value,nombre:r.querySelector('.ct-nom').value.trim(),email:r.querySelector('.ct-email').value.trim(),tel:r.querySelector('.ct-tel').value.trim()})).filter(c=>c.nombre||c.email||c.tel);
+  const tutores=contactos.filter(c=>c.relacion!=='Contacto de emergencia');
+  const emerg=contactos.filter(c=>c.relacion==='Contacto de emergencia');
+  const extra={};(cfg().camposAlumno||[]).filter(c=>c.activo!==false).forEach(c=>{const el=g('mx_'+c.id);if(!el)return;extra[c.id]=c.tipo==='switch'?el.classList.contains('on'):el.value;});
+  const data={nombre:$('#ms_n').value,apellidos:$('#ms_a').value,curso,grupo:$('#ms_g').value,contactos,
+    tutor:tutores[0]||{nombre:'',relacion:'',email:'',tel:''},tutor2:tutores[1]||null,
+    emergencia:emerg.map(e=>({nombre:e.nombre,relacion:'Emergencia',tel:e.tel})),
+    comedor:{inscrito:com!=='no',plan:com==='no'?'—':com,alergias:$('#ms_al').value,medicacion:g('ms_med')?$('#ms_med').value:'',observaciones:''},extra};
+  if(g('ms_dni'))data.dni=g('ms_dni').value;
+  if(g('ms_nac'))data.nacimiento=g('ms_nac').value;
+  if(g('ms_dir'))data.direccion=g('ms_dir').value;
+  if(g('ms_ciu')){data.cp=cp;data.ciudad=ciudad;}
+  if(g('ms_img')){const imgOn=g('ms_img').classList.contains('on');data.autorizacionImagen={permitida:imgOn,fecha:imgOn?today.toISOString().slice(0,10):''};}
+  if(g('ms_beca'))data.beca=g('ms_beca').classList.contains('on');
   if(!data.nombre||!data.apellidos){toast('Indicá nombre y apellido.','warn');return;}
   if(id){const s=DB.students.find(x=>x.id===id);Object.assign(s,data);logAudit('editar','Alumno · '+studentName(data),'Legajo actualizado','edit');toast('Legajo actualizado.','success');saveDB();closeModal();render();}
-  else{const nid='a'+Date.now();DB.students.push({id:nid,...data,color:AV_COLORS[DB.students.length%8],foto:null,tutor2:null,beca:false,notas:{},salud:{obraSocial:'',afiliado:'',grupoSanguineo:'',vacunas:'',medico:'',telMedico:''},autorizados:[{nombre:data.tutor.nombre,dni:data.dni,relacion:data.tutor.relacion}],retiros:[],incidencias:[],actividades:[],inscripciones:[],pagos:[],documentos:[],observaciones:[],matricula:today.toISOString().slice(0,10),estadoMatricula:'Activa',asistencia:{faltas:0,retrasos:0,justificadas:0}});logAudit('crear','Alumno · '+studentName(data),'Alta de alumno','create');inscribirAlumnoCurso(nid,curso,cfg().ciclo);closeModal();render();}}
+  else{const nid='a'+Date.now();DB.students.push({id:nid,...data,color:AV_COLORS[DB.students.length%8],foto:null,dni:data.dni||'',nacimiento:data.nacimiento||'',direccion:data.direccion||'',cp:data.cp||'',ciudad:data.ciudad||'',autorizacionImagen:data.autorizacionImagen||{permitida:false,fecha:''},beca:data.beca||false,notas:{},salud:{obraSocial:'',afiliado:'',grupoSanguineo:'',vacunas:'',medico:'',telMedico:''},autorizados:[{nombre:data.tutor.nombre,dni:data.dni||'',relacion:data.tutor.relacion}],retiros:[],incidencias:[],actividades:[],inscripciones:[],pagos:[],documentos:[],observaciones:[],matricula:today.toISOString().slice(0,10),estadoMatricula:'Activa',asistencia:{faltas:0,retrasos:0,justificadas:0}});logAudit('crear','Alumno · '+studentName(data),'Alta de alumno','create');inscribirAlumnoCurso(nid,curso,cfg().ciclo);closeModal();render();}}
+function panelFormAlumno(){const bi=ALUMNO_BUILTIN.map(([k])=>{const c=builtinCfg(k);return `<div class="alert-item"><div class="info" style="flex:1"><input value="${esc(c.label)}" onchange="setBuiltinLabel('${k}',this.value)" style="width:100%;max-width:240px;padding:7px 10px;border:1.5px solid var(--line);border-radius:8px;font-weight:600"><small>Campo del sistema</small></div><div class="switch ${c.activo?'on':''}" onclick="toggleBuiltin('${k}',this)"></div></div>`;}).join('');
+  const tl={texto:'Texto',numero:'Número',fecha:'Fecha',seleccion:'Selección',switch:'Sí / No'};
+  const cs=(cfg().camposAlumno||[]).map(c=>`<div class="alert-item"><div class="info"><b>${esc(c.label)}</b><small>${tl[c.tipo]||c.tipo}${c.tipo==='seleccion'?': '+esc((c.opciones||[]).join(', ')):''}</small></div><div class="switch ${c.activo!==false?'on':''}" onclick="toggleCampo('${c.id}',this)"></div><button class="btn btn-ghost btn-sm" onclick="modalCampoAlumno('${c.id}')">Editar</button><button class="icon-btn danger" onclick="delCampoAlumno('${c.id}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/></svg></button></div>`).join('');
+  return `<div class="panel" style="margin-top:16px"><div class="panel-head"><h3>Formulario de alumno</h3><span class="sub">Activá, renombrá o agregá campos del alta de alumnos</span><div class="right"><button class="btn btn-primary btn-sm" onclick="modalCampoAlumno()">+ Nuevo campo</button></div></div><div class="panel-body">
+     <div class="form-section" style="border:none;padding-top:0">Campos del sistema</div>${bi}
+     <div class="form-section">Campos personalizados</div>${cs||'<p style="color:var(--muted);font-size:13px">Sin campos personalizados. Creá uno (ej: Turno → Mañana / Tarde, o Sala → 1 / 2 / 3).</p>'}
+   </div></div>`;}
+function setBuiltinLabel(k,v){if(!perm('editar_config'))return;ensureCfgArrays();cfg().alumnoBuiltin[k]=cfg().alumnoBuiltin[k]||{};cfg().alumnoBuiltin[k].label=v.trim();saveDB();}
+function toggleBuiltin(k,el){if(!perm('editar_config')){toast('Sin permiso.','danger');return;}ensureCfgArrays();el.classList.toggle('on');cfg().alumnoBuiltin[k]=cfg().alumnoBuiltin[k]||{};cfg().alumnoBuiltin[k].activo=el.classList.contains('on');saveDB();}
+function toggleCampo(idc,el){if(!perm('editar_config')){toast('Sin permiso.','danger');return;}const c=(cfg().camposAlumno||[]).find(x=>x.id===idc);if(!c)return;el.classList.toggle('on');c.activo=el.classList.contains('on');saveDB();}
+function delCampoAlumno(idc){if(!perm('editar_config')){toast('Sin permiso.','danger');return;}openModal(confirmHTML('Eliminar campo','¿Eliminar este campo del formulario? Los datos ya cargados se conservan, pero deja de mostrarse.',`confirmDelCampo('${idc}')`,'Eliminar'));}
+function confirmDelCampo(idc){if(!perm('editar_config'))return;cfg().camposAlumno=(cfg().camposAlumno||[]).filter(x=>x.id!==idc);logAudit('eliminar','Formulario de alumno','Campo eliminado','delete');saveDB();closeModal();render();toast('Campo eliminado.','danger');}
+function modalCampoAlumno(idc){ensureCfgArrays();let c=idc?cfg().camposAlumno.find(x=>x.id===idc):{label:'',tipo:'texto',opciones:[],porDefecto:'',activo:true};if(!c)return;
+  openModal(`<div class="modal-head"><h3>${idc?'Editar':'Nuevo'} campo</h3><button class="x" onclick="closeModal()">✕</button></div><div class="modal-body"><div class="form-grid">
+     <div class="field"><label>Nombre del campo</label><input id="cax_label" value="${esc(c.label)}" placeholder="Ej: Turno"></div>
+     <div class="field"><label>Tipo</label><select id="cax_tipo" onchange="document.getElementById('cax_opc_wrap').style.display=this.value==='seleccion'?'block':'none'">${[['texto','Texto'],['numero','Número'],['fecha','Fecha'],['seleccion','Selección (opciones)'],['switch','Sí / No']].map(t=>`<option value="${t[0]}" ${c.tipo===t[0]?'selected':''}>${t[1]}</option>`).join('')}</select></div>
+     <div class="field full" id="cax_opc_wrap" style="display:${c.tipo==='seleccion'?'block':'none'}"><label>Opciones (separadas por coma)</label><input id="cax_opc" value="${esc((c.opciones||[]).join(', '))}" placeholder="Mañana, Tarde"></div>
+     <div class="field full"><label>Valor por defecto (opcional)</label><input id="cax_def" value="${esc(c.porDefecto||'')}"></div>
+   </div></div><div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="saveCampoAlumno('${idc||''}')">Guardar campo</button></div>`);}
+function saveCampoAlumno(idc){if(!perm('editar_config')){toast('Sin permiso.','danger');return;}ensureCfgArrays();const label=$('#cax_label').value.trim();if(!label){toast('Indicá el nombre del campo.','warn');return;}const tipo=$('#cax_tipo').value;const opciones=tipo==='seleccion'?$('#cax_opc').value.split(',').map(x=>x.trim()).filter(Boolean):[];if(tipo==='seleccion'&&!opciones.length){toast('Agregá al menos una opción.','warn');return;}const porDefecto=$('#cax_def').value.trim();
+  if(idc){const c=cfg().camposAlumno.find(x=>x.id===idc);Object.assign(c,{label,tipo,opciones,porDefecto});logAudit('editar','Formulario de alumno','Campo '+label,'edit');}
+  else{cfg().camposAlumno.push({id:'cax'+Date.now(),label,tipo,opciones,porDefecto,activo:true});logAudit('crear','Formulario de alumno','Nuevo campo '+label,'create');}
+  saveDB();closeModal();render();toast('Campo guardado.','success');}
 
 let tmpFotoStudent=null;
 function modalFoto(id){const s=DB.students.find(x=>x.id===id);tmpFoto=null;openModal(`<div class="modal-head"><h3>Foto del alumno</h3><button class="x" onclick="closeModal()">✕</button></div><div class="modal-body" style="text-align:center"><div id="fotoPrev" style="margin-bottom:16px">${s.foto?`<img class="photo-lg" src="${s.foto}">`:`<div class="photo-ph" style="background:${s.color};margin:0 auto">${initials(studentName(s))}</div>`}</div><input type="file" id="fotoFile" accept="image/*" style="display:none" onchange="fotoPreview('${id}')"><button class="btn btn-ghost" onclick="$('#fotoFile').click()">📷 Seleccionar imagen</button><div class="check" style="justify-content:center;margin-top:14px"><div class="switch ${s.autorizacionImagen.permitida?'on':''}" id="foto_auth" onclick="this.classList.toggle('on')"></div><span>Autorización de imagen firmada por la familia</span></div><p style="color:var(--muted);font-size:12px;margin-top:8px">Sin autorización, la foto no se muestra (derechos de imagen).</p></div><div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="saveFoto('${id}')">Guardar</button></div>`);}
