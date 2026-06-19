@@ -476,7 +476,7 @@ function viewAlumnos(){const list=filteredStudents();
      ${perm('editar_alumnos')?`<button class="btn btn-primary btn-sm" onclick="modalStudent()">+ Nuevo alumno</button>`:''}
    </div>
    ${filters.adv?`<div class="filter-adv">
-     <div class="field"><label>División</label><select onchange="filters.grupo=this.value;render()"><option value="">Todas</option><option ${filters.grupo==='A'?'selected':''}>A</option><option ${filters.grupo==='B'?'selected':''}>B</option></select></div>
+     <div class="field"><label>${esc(divisionCfg().label)}</label><select onchange="filters.grupo=this.value;render()"><option value="">Todas</option>${divisionCfg().opciones.map(o=>`<option ${filters.grupo===o?'selected':''}>${esc(o)}</option>`).join('')}</select></div>
      <div class="field"><label>Comedor</label><select onchange="filters.comedor=this.value;render()"><option value="">Indiferente</option><option value="si" ${filters.comedor==='si'?'selected':''}>Inscriptos</option><option value="no" ${filters.comedor==='no'?'selected':''}>No</option></select></div>
      <div class="field"><label>Autorización de imagen</label><select onchange="filters.imagen=this.value;render()"><option value="">Indiferente</option><option value="si" ${filters.imagen==='si'?'selected':''}>Con</option><option value="no" ${filters.imagen==='no'?'selected':''}>Sin</option></select></div>
      <div class="field"><label>Matrícula</label><select onchange="filters.matricula=this.value;render()"><option value="">Indiferente</option><option value="espera" ${filters.matricula==='espera'?'selected':''}>En lista de espera</option></select></div>
@@ -739,6 +739,13 @@ const ALUMNO_BUILTIN=[['dni','DNI'],['nacimiento','Nacimiento'],['direccion','Do
 const REL_OPC=['Madre','Padre','Tutor/a legal','Contacto de emergencia','Otro'];
 function ensureCfgArrays(){if(!cfg().camposAlumno)cfg().camposAlumno=[];if(!cfg().alumnoBuiltin)cfg().alumnoBuiltin={};}
 function builtinCfg(k){const o=(cfg().alumnoBuiltin||{})[k]||{};const d=ALUMNO_BUILTIN.find(x=>x[0]===k);return {label:(o.label&&o.label.trim())||(d?d[1]:k),activo:o.activo!==false};}
+function divisionCfg(){const o=(cfg().alumnoBuiltin||{}).division||{};return {label:(o.label&&o.label.trim())||'División',opciones:(o.opciones&&o.opciones.length)?o.opciones:['A','B']};}
+function setDivisionLabel(v){if(!perm('editar_config'))return;ensureCfgArrays();cfg().alumnoBuiltin.division=cfg().alumnoBuiltin.division||{};cfg().alumnoBuiltin.division.label=v.trim();saveDB();render();}
+function setDivisionOpciones(v){if(!perm('editar_config'))return;ensureCfgArrays();cfg().alumnoBuiltin.division=cfg().alumnoBuiltin.division||{};cfg().alumnoBuiltin.division.opciones=v.split(',').map(x=>x.trim()).filter(Boolean);saveDB();render();}
+function addCurso(){if(!perm('editar_config')){toast('Sin permiso.','danger');return;}const n=prompt('Nombre del curso / sala (ej: Sala 1):');if(n===null)return;const nombre=n.trim();if(!nombre)return;if(DB.courses.some(c=>c.nombre===nombre)){toast('Ya existe ese curso.','warn');return;}DB.courses.push({id:'c'+Date.now(),nombre,nivel:'Inicial',capacidad:20,cuota:0,turno:'Mañana',materias:[]});CURSOS.push(nombre);logAudit('crear','Curso · '+nombre,'Nuevo curso','create');saveDB();render();toast('Curso agregado.','success');}
+function renameCurso(id,v){if(!perm('editar_config'))return;const c=DB.courses.find(x=>x.id===id);if(!c)return;const prev=c.nombre;const nombre=v.trim()||prev;if(nombre===prev)return;c.nombre=nombre;DB.students.forEach(st=>{if(st.curso===prev)st.curso=nombre;(st.inscripciones||[]).forEach(i=>{if(i.curso===prev)i.curso=nombre;});});const idx=CURSOS.indexOf(prev);if(idx>=0)CURSOS[idx]=nombre;logAudit('editar','Curso · '+nombre,'Renombrado desde '+prev,'edit');saveDB();render();}
+function delCurso(id){if(!perm('editar_config')){toast('Sin permiso.','danger');return;}const c=DB.courses.find(x=>x.id===id);if(!c)return;const n=DB.students.filter(st=>st.curso===c.nombre||(st.inscripciones||[]).some(i=>i.curso===c.nombre)).length;if(n){toast('No se puede eliminar: tiene '+n+' alumno(s). Reasignalos primero.','danger');return;}openModal(confirmHTML('Eliminar curso',`¿Eliminar el curso <b>${esc(c.nombre)}</b>?`,`confirmDelCurso('${id}')`,'Eliminar'));}
+function confirmDelCurso(id){if(!perm('editar_config'))return;const c=DB.courses.find(x=>x.id===id);if(!c)return;DB.courses=DB.courses.filter(x=>x.id!==id);const idx=CURSOS.indexOf(c.nombre);if(idx>=0)CURSOS.splice(idx,1);logAudit('eliminar','Curso · '+c.nombre,'Curso eliminado','delete');saveDB();closeModal();render();toast('Curso eliminado.','danger');}
 function campoAlumnoInput(c,val){val=(val==null||val==='')?(c.porDefecto||''):val;const id='mx_'+c.id;
   if(c.tipo==='seleccion')return `<select id="${id}">${(c.opciones||[]).map(o=>`<option ${String(val)===String(o)?'selected':''}>${esc(o)}</option>`).join('')}</select>`;
   if(c.tipo==='numero')return `<input id="${id}" type="number" value="${esc(String(val))}">`;
@@ -778,8 +785,8 @@ function modalStudent(id){
      <div class="form-section">Datos del alumno</div>
      <div class="field"><label>Nombre</label><input id="ms_n" value="${esc(s.nombre)}"></div>
      <div class="field"><label>Apellido</label><input id="ms_a" value="${esc(s.apellidos)}"></div>
-     <div class="field"><label>Curso</label><select id="ms_c">${CURSOS.map(c=>`<option ${s.curso===c?'selected':''}>${c}</option>`).join('')}</select></div>
-     <div class="field"><label>División</label><select id="ms_g"><option ${s.grupo==='A'?'selected':''}>A</option><option ${s.grupo==='B'?'selected':''}>B</option></select></div>
+     <div class="field"><label>Curso</label><select id="ms_c">${DB.courses.map(c=>c.nombre).map(c=>`<option ${s.curso===c?'selected':''}>${esc(c)}</option>`).join('')}</select></div>
+     <div class="field"><label>${esc(divisionCfg().label)}</label><select id="ms_g">${divisionCfg().opciones.map(o=>`<option ${s.grupo===o?'selected':''}>${esc(o)}</option>`).join('')}</select></div>
      ${bf('dni').activo?`<div class="field"><label>${esc(bf('dni').label)}</label><input id="ms_dni" value="${esc(s.dni)}"></div>`:''}
      ${bf('nacimiento').activo?`<div class="field"><label>${esc(bf('nacimiento').label)}</label><input id="ms_nac" type="date" value="${s.nacimiento||''}"></div>`:''}
      ${bf('direccion').activo?`<div class="field"><label>${esc(bf('direccion').label)}</label><input id="ms_dir" value="${esc(s.direccion)}"></div>`:''}
@@ -819,7 +826,12 @@ function panelFormAlumno(){const bi=ALUMNO_BUILTIN.map(([k])=>{const c=builtinCf
   const tl={texto:'Texto',numero:'Número',fecha:'Fecha',seleccion:'Selección',switch:'Sí / No'};
   const cs=(cfg().camposAlumno||[]).map(c=>`<div class="alert-item"><div class="info"><b>${esc(c.label)}</b><small>${tl[c.tipo]||c.tipo}${c.tipo==='seleccion'?': '+esc((c.opciones||[]).join(', ')):''}</small></div><div class="switch ${c.activo!==false?'on':''}" onclick="toggleCampo('${c.id}',this)"></div><button class="btn btn-ghost btn-sm" onclick="modalCampoAlumno('${c.id}')">Editar</button><button class="icon-btn danger" onclick="delCampoAlumno('${c.id}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/></svg></button></div>`).join('');
   return `<div class="panel" style="margin-top:16px"><div class="panel-head"><h3>Formulario de alumno</h3><span class="sub">Activá, renombrá o agregá campos del alta de alumnos</span><div class="right"><button class="btn btn-primary btn-sm" onclick="modalCampoAlumno()">+ Nuevo campo</button></div></div><div class="panel-body">
-     <div class="form-section" style="border:none;padding-top:0">Campos del sistema</div>${bi}
+     <div class="form-section" style="border:none;padding-top:0">Cursos / salas</div>
+     ${DB.courses.map(c=>`<div class="alert-item"><input value="${esc(c.nombre)}" onchange="renameCurso('${c.id}',this.value)" style="flex:1;max-width:260px;padding:7px 10px;border:1.5px solid var(--line);border-radius:8px;font-weight:600"><small style="color:var(--muted)">${cursoConfirmados(c.nombre,cfg().ciclo).length} alumno(s)</small><button class="icon-btn danger" onclick="delCurso('${c.id}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/></svg></button></div>`).join('')}
+     <button class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="addCurso()">+ Nuevo curso / sala</button>
+     <div class="form-section">2.º selector del alumno (al lado de Curso)</div>
+     <div class="form-grid"><div class="field"><label>Nombre del campo</label><input value="${esc(divisionCfg().label)}" onchange="setDivisionLabel(this.value)" placeholder="Ej: Turno"></div><div class="field"><label>Opciones (separadas por coma)</label><input value="${esc(divisionCfg().opciones.join(', '))}" onchange="setDivisionOpciones(this.value)" placeholder="Mañana, Tarde"></div></div>
+     <div class="form-section">Campos del sistema</div>${bi}
      <div class="form-section">Campos personalizados</div>${cs||'<p style="color:var(--muted);font-size:13px">Sin campos personalizados. Creá uno (ej: Turno → Mañana / Tarde, o Sala → 1 / 2 / 3).</p>'}
    </div></div>`;}
 function setBuiltinLabel(k,v){if(!perm('editar_config'))return;ensureCfgArrays();cfg().alumnoBuiltin[k]=cfg().alumnoBuiltin[k]||{};cfg().alumnoBuiltin[k].label=v.trim();saveDB();}
