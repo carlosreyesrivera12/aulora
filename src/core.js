@@ -30,7 +30,7 @@ function rolePreset(r){const all=Object.fromEntries(PERMS.map(p=>[p[0],true]));c
     case 'afa':return ON('ver_dashboard','ver_afa','editar_afa','ver_comunicaciones','ver_actividades');
     default:return none;}}
 const ROLE_LABEL={super_admin:'Super Admin',supervisor:'Supervisor',admin:'Administración',auditor:'Auditoría',contador:'Contaduría',profesor:'Profesorado',comedor:'Comedor',proveedor_actividades:'Proveedor actividades',afa:'AFA / AMPA',alumno:'Alumno/a',familia:'Familia'};
-function roleLabel(r){if(roleLabel(r))return roleLabel(r);if(typeof r==='string'&&r.indexOf('custom:')===0){const rc=(typeof DB!=='undefined'&&cfg().rolesCustom||[]).find(x=>x.id===r);return rc?rc.nombre:'Rol personalizado';}return r;}
+function roleLabel(r){if(ROLE_LABEL[r])return ROLE_LABEL[r];if(typeof r==='string'&&r.indexOf('custom:')===0){const rc=((typeof DB!=='undefined'&&cfg().rolesCustom)||[]).find(x=>x.id===r);return rc?rc.nombre:'Rol personalizado';}return r;}
 const ROLE_RANK={super_admin:100,supervisor:80,admin:60,contador:40,auditor:40,profesor:40,comedor:40,proveedor_actividades:40,afa:40,familia:0,alumno:0};
 function roleRank(r){if(ROLE_RANK[r]!=null)return ROLE_RANK[r];if(typeof r==='string'&&r.indexOf('custom:')===0){const rc=(typeof DB!=='undefined'&&cfg().rolesCustom||[]).find(x=>x.id===r);return rc&&rc.rank!=null?rc.rank:40;}return 0;}
 // Un usuario puede gestionar (editar/bloquear/eliminar) a otro de rango estrictamente menor; el super_admin gestiona a todos salvo a sí mismo.
